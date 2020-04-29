@@ -15,14 +15,40 @@ from mpl_toolkits.axes_grid.inset_locator import inset_axes
 
 
 #Shuttling dependence from ion routing model. See paper for more details
-
-#Number of shuttling operations (defined as shuttling between two adjacent X-Junctions) as a function of qubit number
 def shuttlesFromQubit(qubit):
-    return 1.3*(qubit**0.5)+2
+    """ Number of shuttling operations (defined as shuttling between two 
+        adjacent X-Junctions) as a function of qubit number, N
+    Parameters
+    ----------
+    totalError: float
+        
+    qubit: int
+        Number of qubits, N
+        
+    Returns
+    ----------
+    total shuttling time scaling: float
+        tau = 1.3 * sqrt(N) + 2 
+    """
+    return 1.3 * np.sqrt(qubit) + 2
 
 #Number of times an ion on average passes through the centre of an X-Junction, as a function of qubit number
 def xPassFromQubit(qubit):
-    return (0.6/2**0.5)*(qubit**0.5)+2.4
+    """ Number of times an ion on average passes through the centre of an 
+        X-Junction, as a function of qubit number, N
+    Parameters
+    ----------
+    totalError: float
+        
+    qubit: int
+        Number of qubits, N
+        
+    Returns
+    ----------
+    X_count (paper): float
+        X_count = [0.6/sqrt(2) * sqrt(N)] + 2.4
+    """
+    return (0.6/np.sqrt(2)) * np.sqrt(qubit) + 2.4
 
 #Depth overhead for swapping on a superconducting square grid using CQC's publically available tket
 def scDepthOverhead(qubit):
@@ -31,40 +57,129 @@ def scDepthOverhead(qubit):
 
 #Equations to calculate QV_native for the various architectures
 
-#Convert a gate fidelity (%) into an error
 def fid2Error(gatefid):
-    return (100-gatefid)/100
+    """ Convert a gate fidelity (%) into an error
+    Parameters
+    ----------
+    gatefid: float
+        fidelity of gate
+    Returns
+    ----------
+    gate error: float
+        100 - fidelity / 100
+    """
+    return (100 - gatefid)/100
 
-#Calculate the achievable depth as a function of the total effective error and qubit number
 def depth(totalError,qubit):
+    """ Calculate the achievable depth, D, as a function of the total effective 
+        error, epsilon_eff, and qubit number, N.
+    Parameters
+    ----------
+    totalError: float
+        
+    qubit: int
+        Number of qubits, N
+        
+    Returns
+    ----------
+    depth: float
+        D = 1 / (N * epsilon_eff)
+    """
     return 1/(qubit*(totalError))
 
 #Calculate trapped ion total effective error
-def ionEffectiveError(qubit,gatefid,shuttleTime,coherenceTime,ionLossRate):
-    #Error from decoherence 1-e^(t/c), where t includes time spent shuttling and on separating and merging.
-    errorFromShuttling=1-np.exp((-(shuttleTime*shuttlesFromQubit(qubit)+2*separationMerge)*10**-6)/coherenceTime)
-    #Ion Loss error
-    ionLoss=xPassFromQubit(qubit)*ionLossRate
+def ionEffectiveError(qubit, gatefid, shuttleTime, coherenceTime, ionLossRate):
+    """ Calculate trapped ion total effective error
+    Parameters
+    ----------
+    qubit: int
+        Number of qubits, N
+
+    gatefid: float
+        fidelity of gate
+    
+    total shuttling time scaling: float
+        tau = 1.3 * sqrt(N) + 2 
+    
+    coherenceTim : float
+        time in seconds (c in paper)
+    
+    ionLossRate : float
+        rate of ions lost per shuttle rate (X_loss in paper)
+    
+    Returns
+    ----------
+    effective ion error: float
+        Equation 2 in paper:
+        
+        epsilon_eff = epsilon_gate + (1 - e^{-t / c}) + (X_count * X_loss)
+        
+        t = time spent shuttling and on separating and merging [microseconds]
+        X_count = mean number of ions passing over X-junctions
+    """
+    
+    t = (shuttleTime*shuttlesFromQubit(qubit)+2*separationMerge)*10**(-6)
+    
+    #Error from decoherence 1-e^(t/c)
+    errorFromShuttling = 1 - np.exp(-t / coherenceTime)
+    
+    #Ion Loss error (X_count * X_loss)
+    ionLoss = xPassFromQubit(qubit) * ionLossRate
+    
     #Assuming gate requirement is the native two qubit gate
-    errorFromGates=fid2Error(gatefid)
-    return errorFromShuttling+ionLoss+errorFromGates
+    errorFromGates = fid2Error(gatefid)
+    
+    errorFromConnectivity = errorFromShuttling + ionLoss
+    
+    return errorFromGates + errorFromConnectivity
 
 #QV native as a function of qubit number
 def QVnative(architecture,qubit,gatefid,square):
-    #ion
-    if architecture==1:
-        totalError=ionEffectiveError(qubit,gatefid,shuttleSpeed,coherenceTime,ionLossRate)
-    #all2all
-    if architecture==2:
-        totalError=fid2Error(gatefid)
+    """ Quantum Vplume (QV) native as a function of qubit number
+    Parameters
+    ----------
+    architecture: int
+        1 = Ion Trap, 2 = All-to-All Connected, 3 = Superconducting
+    
+    qubit: int
+        Number of qubits, N
+
+    gatefid: float
+        fidelity of gate
+    
+    total shuttling time scaling: float
+        tau = 1.3 * sqrt(N) + 2 
+    
+    square: int
+    
+    Returns
+    ----------
+    effective ion error: float
+        Equation 2 in paper:
+        
+        epsilon_eff = epsilon_gate + (1 - e^{-t / c}) + (X_count * X_loss)
+        
+        t = time spent shuttling and on separating and merging [microseconds]
+        X_count = mean number of ions passing over X-junctions
+    """
+    #Ion Trap Archirecture
+    if architecture == 1:
+            totalError = ionEffectiveError(qubit, gatefid, shuttleSpeed, coherenceTime, ionLossRate)
+    #All-to-All Connected Archirecture
+    elif architecture == 2:
+        totalError = fid2Error(gatefid)
+    
     #Superconducting where depth overhead scales as 2.77N^0.5 -4.53 (adjust above)
-    if architecture==3:
-        totalError=scDepthOverhead(qubit)*fid2Error(gatefid)
-    circuitDepth=depth(totalError,qubit)
-    if square==1:
-        QV=min(circuitDepth,qubit)**2
+    elif architecture == 3:
+        totalError = scDepthOverhead(qubit) * fid2Error(gatefid)
+    circuitDepth = depth(totalError,qubit)
+    
+    if square == 1:
+        QV = min(circuitDepth, qubit)**2
+    
     else:
-        QV=min(circuitDepth,qubit)
+        QV = min(circuitDepth, qubit)
+    
     return QV
 
 #The peak value of QV as a function of qubit number

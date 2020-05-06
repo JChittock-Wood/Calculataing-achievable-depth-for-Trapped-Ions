@@ -136,7 +136,7 @@ def ionEffectiveError(qubit, gatefid, shuttleTime, coherenceTime, ionLossRate):
 # QV native as a function of qubit number
 
 
-def QVnative(architecture, qubit, gatefid, square):
+def QVnative(architecture, qubit, gatefid, square, coherenceTime):
     """ Quantum Vplume (QV) native as a function of qubit number
     Parameters
     ----------
@@ -188,7 +188,7 @@ def QVnative(architecture, qubit, gatefid, square):
     return QV
 
 # The peak value of QV as a function of qubit number
-def maxQVnative(architecture, qubits, gatefid, square):
+def maxQVnative(architecture, qubits, gatefid, square, coherenceTime):
     """ Quantum Vplume (QV) native as a function of qubit number
     Parameters
     ----------
@@ -217,7 +217,7 @@ def maxQVnative(architecture, qubits, gatefid, square):
     maxQV = 0
     
     for qubit in qubits:    
-        newQV = QVnative(architecture, qubit, gatefid, square)
+        newQV = QVnative(architecture, qubit, gatefid, square, coherenceTime)
         if newQV < maxQV:
             return maxQV
         maxQV = newQV
@@ -227,13 +227,13 @@ def maxQVnative(architecture, qubits, gatefid, square):
 
 # Qubit number range investigated
 qubit_min = 2
-qubit_max = 120
+qubit_max = 120 #25 #120
 qubit_step = 2
 qubits = np.arange(qubit_min, qubit_max + qubit_step, qubit_step)
 
 # Gate fidelity range investigated
-gatefidmin = 99
-gatefidmax = 99.99
+gatefidmin = 99 #10
+gatefidmax = 99.99 #99.9
 dataPoints = 10000
 step = (gatefidmax - gatefidmin)/dataPoints
 gatefids = np.arange(gatefidmin, gatefidmax + step, step)
@@ -245,6 +245,7 @@ two_qubit_errors = 1 / ((100 - gatefids) / 100)
 
 # Coherence time (seconds)
 coherenceTime = 2.13
+coherenceTimeLong = coherenceTime * 10
 # Likely hood of loss per X-junction travel
 ionLossRate = 10**-6
 # Time to shuttle between two adjacent X-junctions (microseconds)
@@ -256,32 +257,31 @@ separationMerge = 80
 square = 0
 
 #Calculate and plot
-ion = []
-ion = []
-ion = []
+ion_5 = []
+ion_6 = []
 sc = []
 all2all = []
 
-for i in range(0, len(gatefids)):
-    ion.append(maxQVnative(1, qubits, gatefids[i], square))
+for gatefid in gatefids:
+    ion_5.append(maxQVnative(1, qubits, gatefid, square, coherenceTime))
+    ion_6.append(maxQVnative(1, qubits, gatefid, square, coherenceTimeLong))
+    all2all.append(maxQVnative(2, qubits, gatefid, square, coherenceTime))
+    sc.append(maxQVnative(3, qubits, gatefid, square, coherenceTime))
 
-for i in range(0, len(gatefids)):
-    all2all.append(maxQVnative(2, qubits, gatefids[i], square))
-
-for i in range(0, len(gatefids)):
-    sc.append(maxQVnative(3, qubits, gatefids[i], square))
-
+plt.rcParams.update({'font.size': 14})
 fig = plt.figure()
 ax = fig.add_subplot(1, 1, 1)
 
-plt.plot(two_qubit_errors, all2all, 'r-', label="Free all to all connectivity")
-plt.plot(two_qubit_errors, ion, label="Ions with "+r'$t/c\ \approx\ 5 \times 10^{-5}$')
-plt.plot(two_qubit_errors, sc, 'y-', label="Superconducting square grid")
-
-plt.legend(loc="upper left")
+plt.plot(two_qubit_errors, all2all, 'r-', label="All-to-All")
+plt.plot(two_qubit_errors, ion_5, 'g-', label="Ion "+r'$t_{s}/t_{c}\ \approx\ 5 \times 10^{-5}$')
+plt.plot(two_qubit_errors, ion_6, 'b-', label="Ion "+r'$t_{s}/t_{c}\ \approx\ 5 \times 10^{-6}$')
+plt.plot(two_qubit_errors, sc, 'y-', label="Superconducting")
+label = 'Ion'
+plt.legend(loc="best")
 plt.xlabel('1/'+r'$\epsilon$')
 plt.ylabel('$log_2$ ($QV_{native}$)')
 plt.xlim(min(two_qubit_errors), max(two_qubit_errors))
 plt.grid()
 ax.set_xscale('log')
+plt.savefig(label+'.png', dpi = 300)
  
